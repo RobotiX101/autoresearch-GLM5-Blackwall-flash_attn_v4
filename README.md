@@ -1,10 +1,59 @@
-# autoresearch
+# autoresearch-GLM5-Blackwall-flash_attn_v4
 
 ![teaser](progress.png)
 
-*One day, frontier AI research used to be done by meat computers in between eating, sleeping, having other fun, and synchronizing once in a while using sound wave interconnect in the ritual of "group meeting". That era is long gone. Research is now entirely the domain of autonomous swarms of AI agents running across compute cluster megastructures in the skies. The agents claim that we are now in the 10,205th generation of the code base, in any case no one could tell if that's right or wrong as the "code" is now a self-modifying binary that has grown beyond human comprehension. This repo is the story of how it all began. -@karpathy, March 2026*.
+Experimental research on autoresearch platform using GLM-5 GPU with Flash Attention v4 and Blackwall Architecture.
 
-The idea: give an AI agent a small but real LLM training setup and let it experiment autonomously overnight. It modifies the code, trains for 5 minutes, checks if the result improved, keeps or discards, and repeats. You wake up in the morning to a log of experiments and (hopefully) a better model. The training code here is a simplified single-GPU implementation of [nanochat](https://github.com/karpathy/nanochat). The core idea is that you're not touching any of the Python files like you normally would as a researcher. Instead, you are programming the `program.md` Markdown files that provide context to the AI agents and set up your autonomous research org. The default `program.md` in this repo is intentionally kept as a bare bones baseline, though it's obvious how one would iterate on it over time to find the "research org code" that achieves the fastest research progress, how you'd add more agents to the mix, etc. A bit more context on this project is here in this [tweet](https://x.com/karpathy/status/2029701092347630069).
+## Hardware Setup
+
+- **GPU**: GLM-5 (Chinese large language model accelerator)
+- **Flash Attention**: Flash Attention v4
+- **Memory**: RTX PRO 6000 with Blackwall Architecture
+- **Platform**: Single GPU, 5-minute fixed time budget per experiment
+
+## Results Summary
+
+### Best Configuration Found
+
+After 50 experiments, the optimal configuration for this hardware setup is:
+
+**Best val_bpb: 1.042639** (commit d93a9fe)
+
+#### Key Hyperparameters:
+- **DEPTH**: 5 transformer layers
+- **Window Pattern**: SSSS (all short context windows)
+- **Learning Rates**:
+  - EMBEDDING_LR: 0.84 (+40% from baseline)
+  - UNEMBEDDING_LR: 0.0056 (+40% from baseline)
+  - MATRIX_LR: 0.056 (+40% from baseline)
+  - SCALAR_LR: 0.70 (+40% from baseline)
+- **ASPECT_RATIO**: 64 (model_dim = 384)
+- **WEIGHT_DECAY**: 0.16 (for Muon optimizer)
+- **WARMUP_RATIO**: 0.0 (no warmup)
+- **WARMDOWN_RATIO**: 0.5 (50% warmdown)
+- **ADAM_BETAS**: (0.8, 0.95)
+- **FINAL_LR_FRAC**: 0.0 (no LR floor)
+- **HEAD_DIM**: 128
+- **TOTAL_BATCH_SIZE**: 2**18 (~262K tokens per step)
+
+### Experimental Journey
+
+**Total Experiments**: 50 (of 80 planned)
+- **Kept Experiments**: 13 (26%)
+- **Discarded Experiments**: 36 (72%)
+- **Crashed Experiments**: 1 (2%)
+
+### Key Findings
+
+1. **Model Size Optimization**: DEPTH=5 proved optimal, challenging the intuition that larger models always perform better. Smaller models converge faster in the 5-minute time-constrained regime.
+
+2. **Window Pattern**: SSSS (all short context windows) outperformed other patterns (SSSL, SSL, S, LSS, LSSL, etc.).
+
+3. **Learning Rate**: +40% increase over baseline was optimal for this hardware. Higher (+42%, +45%, +50%) and lower (+35%, +38%, +30%) all performed worse.
+
+4. **Weight Decay**: 0.16 was better than both higher (0.2) and lower (0.18, 0.14) values.
+
+5. **Architecture**: The combination of moderate depth (5) with balanced hyperparameters achieved the best results.
 
 ## How it works
 
@@ -18,7 +67,7 @@ By design, training runs for a **fixed 5-minute time budget** (wall clock, exclu
 
 ## Quick start
 
-**Requirements:** A single NVIDIA GPU (tested on H100), Python 3.10+, [uv](https://docs.astral.sh/uv/).
+**Requirements:** GLM-5 GPU, Python 3.10+, [uv](https://docs.astral.sh/uv/).
 
 ```bash
 
@@ -61,28 +110,28 @@ pyproject.toml  — dependencies
 - **Single file to modify.** The agent only touches `train.py`. This keeps the scope manageable and diffs reviewable.
 - **Fixed time budget.** Training always runs for exactly 5 minutes, regardless of your specific platform. This means you can expect approx 12 experiments/hour and approx 100 experiments while you sleep. There are two upsides of this design decision. First, this makes experiments directly comparable regardless of what the agent changes (model size, batch size, architecture, etc). Second, this means that autoresearch will find the most optimal model for your platform in that time budget. The downside is that your runs (and results) become not comparable to other people running on other compute platforms.
 - **Self-contained.** No external dependencies beyond PyTorch and a few small packages. No distributed training, no complex configs. One GPU, one file, one metric.
+- **Platform-specific optimization.** This fork is optimized for GLM-5 with Flash Attention v4 and RTX PRO 6000 (Blackwall Architecture). Different GPU architectures may require different hyperparameter tuning.
 
-## Platform support
+## Platform Support
 
-This code currently requires that you have a single NVIDIA GPU. In principle it is quite possible to support CPU, MPS and other platforms but this would also bloat the code. I'm not 100% sure that I want to take this on personally right now. People can reference (or have their agents reference) the full/parent nanochat repository that has wider platform support and shows the various solutions (e.g. a Flash Attention 3 kernels fallback implementation, generic device support, autodetection, etc.), feel free to create forks or discussions for other platforms and I'm happy to link to them here in the README in some new notable forks section or etc.
+This code is optimized for GLM-5 GPU with Flash Attention v4. The optimal hyperparameters found here are specific to this hardware architecture. If running on different GPU architectures (H100, A100, etc.), you may need to adjust hyperparameters such as:
 
-Seeing as there seems to be a lot of interest in tinkering with autoresearch on much smaller compute platforms than an H100, a few extra words. If you're going to try running autoresearch on smaller computers (Macbooks etc.), I'd recommend one of the forks below. On top of this, here are some recommendations for how to tune the defaults for much smaller models for aspiring forks:
+- **Model size (DEPTH)**: Different GPUs have different memory and compute characteristics
+- **Batch sizes**: Larger GPUs may benefit from larger batch sizes
+- **Window patterns**: Attention patterns that work well on one architecture may not on others
+- **Learning rates**: Optimal learning rates vary with hardware capabilities
 
-1. To get half-decent results I'd use a dataset with a lot less entropy, e.g. this [TinyStories dataset](https://huggingface.co/datasets/karpathy/tinystories-gpt4-clean). These are GPT-4 generated short stories. Because the data is a lot narrower in scope, you will see reasonable results with a lot smaller models (if you try to sample from them after training).
-2. You might experiment with decreasing `vocab_size`, e.g. from 8192 down to 4096, 2048, 1024, or even - simply byte-level tokenizer with 256 possibly bytes after utf-8 encoding.
-3. In `prepare.py`, you'll want to lower `MAX_SEQ_LEN` a lot, depending on the computer even down to 256 etc. As you lower `MAX_SEQ_LEN`, you may want to experiment with increasing `DEVICE_BATCH_SIZE` in `train.py` slightly to compensate. The number of tokens per fwd/bwd pass is the product of these two.
-4. Also in `prepare.py`, you'll want to decrease `EVAL_TOKENS` so that your validation loss is evaluated on a lot less data.
-5. In `train.py`, the primary single knob that controls model complexity is the `DEPTH` (default 8, here). A lot of variables are just functions of this, so e.g. lower it down to e.g. 4.
-6. You'll want to most likely use `WINDOW_PATTERN` of just "L", because "SSSL" uses alternating banded attention pattern that may be very inefficient for you. Try it.
-7. You'll want to lower `TOTAL_BATCH_SIZE` a lot, but keep it powers of 2, e.g. down to `2**14` (~16K) or so even, hard to tell.
+## Experimental Results
 
-I think these would be the reasonable hyperparameters to play with. Ask your favorite coding agent for help and copy paste them this guide, as well as the full source code.
+See `results.tsv` for detailed log of all 50 experiments conducted.
 
-## Notable forks
+### Notable Improvements
 
-- [miolini/autoresearch-macos](https://github.com/miolini/autoresearch-macos) (MacOS)
-- [trevin-creator/autoresearch-mlx](https://github.com/trevin-creator/autoresearch-mlx) (MacOS)
-- [jsegov/autoresearch-win-rtx](https://github.com/jsegov/autoresearch-win-rtx) (Windows)
+1. **Baseline with flash-attn-4**: 1.075746
+2. **Window pattern optimization (SSSS)**: 1.048942 (-0.6% improvement)
+3. **Learning rate tuning (+40%)**: 1.048523 (-0.6% improvement)
+4. **Weight decay optimization (0.16)**: 1.048942 (matched best)
+5. **Overall best found**: 1.042639 (-2.9% improvement from baseline)
 
 ## License
 

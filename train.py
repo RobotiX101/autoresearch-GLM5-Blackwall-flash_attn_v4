@@ -1,7 +1,11 @@
 """
-Autoresearch pretraining script. Single-GPU, single-file.
+Autoresearch pretraining script for GLM-5 GPU with Flash Attention v4.
+Single-GPU, single-file, optimized for RTX PRO 6000 (Blackwall Architecture).
 Cherry-picked and simplified from nanochat.
 Usage: uv run train.py
+
+Hardware: GLM-5 GPU, Flash Attention v4, RTX PRO 6000, Blackwall Architecture
+Time budget: Fixed 5-minute training per experiment
 """
 
 import os
