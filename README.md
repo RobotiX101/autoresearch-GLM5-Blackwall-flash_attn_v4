@@ -1,7 +1,7 @@
 # autoresearch-GLM5-Blackwall-flash_attn_v4
-
+ 
 ![teaser](progress.png)
-
+ 
 Experimental research on autoresearch platform using GLM-5 GPU with Flash Attention v4 and Blackwall Architecture.
 
 ## Hardware Setup
